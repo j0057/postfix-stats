@@ -8,7 +8,7 @@ import sys
 _log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<sid>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
 _message_id = re.compile(r'^[0-9A-F]{10}')
 
-def get_logs():
+def get_records():
     sys.stderr.write('  running journalctl\n')
     logs = subprocess.check_output(['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso', '--since=2015-02-01'])
     sys.stderr.write('  splitting lines\n')
@@ -16,9 +16,9 @@ def get_logs():
     sys.stderr.write('  parsing records\n')
     return [ _log_parts.match(line).groupdict() for line in logs ]
 
-def find_connects_and_pickups(logs):
+def find_connects_and_pickups(records):
     session_id = 1
-    for rec in logs:
+    for rec in records:
         if rec['message'].startswith('connect from'):
             rec['session_id'] = session_id
             session_id += 1
@@ -77,16 +77,16 @@ def print_record(rec):
 
 if __name__ == '__main__':
     sys.stderr.write('getting records\n')
-    logs = get_logs()
+    records = get_records()
 
     sys.stderr.write('finding connects and pickups\n')
-    find_connects_and_pickups(logs)
+    find_connects_and_pickups(records)
 
     sys.stderr.write('finding disconnects\n')
-    find_disconnects(logs)
+    find_disconnects(records)
 
     sys.stderr.write('following queues\n')
-    follow_queue(logs)
+    follow_queue(records)
 
     sys.stderr.write('done\n\n')
 
@@ -94,10 +94,10 @@ if __name__ == '__main__':
     # TODO : anvil statistics
     # TODO : warning hostname does not resolve to address
 
-    #map(print_record, logs)
+    #map(print_record, records)
 
-    index = session_index(logs)
+    index = session_index(records)
     for session_id in sorted(index.keys()):
         for i in index[session_id]:
-            print_record(logs[i])
+            print_record(records[i])
         print
