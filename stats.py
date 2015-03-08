@@ -31,13 +31,16 @@ def find_connects_and_pickups(records):
 def find_disconnects(records):
     last_session_id = 0
     for (i, rec) in enumerate(records):
-        if rec['session_id'] <= last_session_id: continue
-        if rec['sid'] != 'postfix/smtpd': continue
+        if rec['session_id'] <= last_session_id:
+            continue
+        if rec['sid'] != 'postfix/smtpd':
+            continue
         j = i + 1
         while True:
             if records[j]['sid'] == 'postfix/smtpd' and records[j]['pid'] == rec['pid']:
                 records[j]['session_id'] = rec['session_id']
-                if records[j]['message'].startswith('disconnect from'): break
+                if records[j]['message'].startswith('disconnect from '):
+                    break
             j += 1
         last_session_id = rec['session_id']
 
@@ -65,6 +68,7 @@ def follow_queue(records):
                 break
         else:
             continue
+
         while True:
             if records[i]['message'].startswith(message_id):
                 records[i]['session_id'] = session_id
