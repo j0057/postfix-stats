@@ -56,6 +56,10 @@ def session_index(records):
             result[session_id] = [i]
     return result
 
+def session_dict(records):
+    return { session_id: [ records[i] for i in record_indices ]
+             for (session_id, record_indices) in session_index(records).items() }
+
 def follow_queue(records):
     index = session_index(records)
     for (session_id, rec_numbers) in index.items():
@@ -79,6 +83,48 @@ def follow_queue(records):
 def print_record(rec):
     print '{i:4} {date} {hostname} {sid}[{pid}]: {message}'.format(i=rec['session_id'] or '', **rec)
 
+class Matcher(object):
+    def __init__(self, name, *pattern):
+        self.name = name
+        self.sid = [ sid for (sid, _) in pattern ]
+        self.rgx = [ re.compile(regex or r'^.*$') for (_, regex) in pattern ]
+
+    def __call__(self, records, i=0):
+        result = { 'type': self.name }
+        for rec in records:
+            if i >= len(self.sid): break
+            if rec['sid'] != self.sid[i]: break
+            match = self.rgx[i].match(rec['message'])
+            if not match: break
+            result.update(match.groupdict())
+            i += 1
+        else:
+            if i == len(self.sid): return result
+
+_session_rules = [
+    Matcher('LOCAL_TO_LOCAL_DELIVERED',
+            ('postfix/pickup', r''),
+            ('postfix/cleanup', r''),
+            ('postfix/qmgr', r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            ('postfix/local', r''),
+            ('postfix/qmgr', r'^[0-9A-F]{10}: removed$')),
+
+    Matcher('LOCAL_TO_REMOTE_DELIVERED',
+            ('postfix/pickup', r''),
+            ('postfix/cleanup', r''),
+            ('postfix/qmgr', r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            ('postfix/smtp', r''),
+            ('postfix/qmgr', r'^[0-9A-F]{10}: removed$')),
+]
+
+def classify_sessions(records):
+    def classify(session):
+        for matcher in _session_rules:
+            result = matcher(session)
+            if result: return result
+    return { session_id: classify(session)
+             for (session_id, session) in session_dict(records).items() }
+
 if __name__ == '__main__':
     records = get_records()
 
@@ -90,6 +136,9 @@ if __name__ == '__main__':
 
     sys.stderr.write('following queues\n')
     follow_queue(records)
+
+    sys.stderr.write('matching patterns\n')
+    patterns = classify_sessions(records)
 
     sys.stderr.write('done\n\n')
 
@@ -103,4 +152,6 @@ if __name__ == '__main__':
     for session_id in sorted(index.keys()):
         for i in index[session_id]:
             print_record(records[i])
+        if patterns[session_id]:
+            print ' -->', patterns[session_id]
         print
