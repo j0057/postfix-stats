@@ -19,7 +19,7 @@ def get_records():
 def find_connects_and_pickups(records):
     session_id = 1
     for rec in records:
-        if rec['message'].startswith('connect from'):
+        if rec['sid'] == 'postfix/smtpd' and rec['message'].startswith('connect from '):
             rec['session_id'] = session_id
             session_id += 1
         elif rec['sid'] == 'postfix/pickup':
