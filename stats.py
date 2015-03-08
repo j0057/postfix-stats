@@ -9,11 +9,11 @@ _log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<sid>\S+)\[(?P<pid
 _message_id = re.compile(r'^[0-9A-F]{10}')
 
 def get_records():
-    sys.stderr.write('  running journalctl\n')
+    sys.stderr.write('running journalctl\n')
     logs = subprocess.check_output(['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso', '--since=2015-02-01'])
-    sys.stderr.write('  splitting lines\n')
+    sys.stderr.write('splitting lines\n')
     logs = logs.split('\n')[1:-1]
-    sys.stderr.write('  parsing records\n')
+    sys.stderr.write('parsing records\n')
     return [ _log_parts.match(line).groupdict() for line in logs ]
 
 def find_connects_and_pickups(records):
@@ -76,7 +76,6 @@ def print_record(rec):
     print '{i:4} {date} {hostname} {sid}[{pid}]: {message}'.format(i=rec['session_id'] or '', **rec)
 
 if __name__ == '__main__':
-    sys.stderr.write('getting records\n')
     records = get_records()
 
     sys.stderr.write('finding connects and pickups\n')
