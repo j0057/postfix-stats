@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import time
 import itertools
 
-_log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<sid>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
+_log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<daemon>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
 _message_id = re.compile(r'^[0-9A-F]{10}')
 
 @contextmanager
@@ -33,10 +33,10 @@ def get_records():
 def find_connects_and_pickups(records):
     session_id = 1
     for rec in records:
-        if rec['sid'] == 'postfix/smtpd' and rec['message'].startswith('connect from '):
+        if rec['daemon'] == 'postfix/smtpd' and rec['message'].startswith('connect from '):
             rec['session_id'] = session_id
             session_id += 1
-        elif rec['sid'] == 'postfix/pickup':
+        elif rec['daemon'] == 'postfix/pickup':
             rec['session_id'] = session_id
             session_id += 1
         else:
@@ -47,11 +47,11 @@ def find_disconnects(records):
     for (i, rec) in enumerate(records):
         if rec['session_id'] <= last_session_id:
             continue
-        if rec['sid'] != 'postfix/smtpd':
+        if rec['daemon'] != 'postfix/smtpd':
             continue
         j = i + 1
         while True:
-            if records[j]['sid'] == 'postfix/smtpd' and records[j]['pid'] == rec['pid']:
+            if records[j]['daemon'] == 'postfix/smtpd' and records[j]['pid'] == rec['pid']:
                 records[j]['session_id'] = rec['session_id']
                 if records[j]['message'].startswith('disconnect from '):
                     break
@@ -78,10 +78,10 @@ def follow_queue(records):
     index = session_index(records)
     for (session_id, rec_numbers) in index.items():
         for i in rec_numbers:
-            if records[i]['sid'] == 'postfix/pickup':
+            if records[i]['daemon'] == 'postfix/pickup':
                 message_id = records[i]['message'][:10]
                 break
-            elif records[i]['sid'] == 'postfix/smtpd' and _message_id.match(records[i]['message']):
+            elif records[i]['daemon'] == 'postfix/smtpd' and _message_id.match(records[i]['message']):
                 message_id = records[i]['message'][:10]
                 break
         else:
@@ -95,19 +95,19 @@ def follow_queue(records):
             i += 1
 
 def print_record(rec):
-    print '{i:4} {date} {hostname} {sid}[{pid}]: {message}'.format(i=rec['session_id'] or '', **rec)
+    print '{i:4} {date} {hostname} {daemon}[{pid}]: {message}'.format(i=rec['session_id'] or '', **rec)
 
 class Matcher(object):
     def __init__(self, name, *transitions):
         self.name = name
-        self.trans = { k: [ (next_state, sid, re.compile(regex or r'^.*$')) for (_, next_state, sid, regex) in v ]
+        self.trans = { k: [ (next_state, daemon, re.compile(regex or r'^.*$')) for (_, next_state, daemon, regex) in v ]
                        for (k, v) in itertools.groupby(transitions, lambda t: t[0]) }
 
     def __call__(self, records, state=0):
         result = { 'type': self.name }
         for rec in records:
-            for (next_state, sid, regex) in self.trans[state]:
-                if rec['sid'] != sid: continue # wrong daemon
+            for (next_state, daemon, regex) in self.trans[state]:
+                if rec['daemon'] != daemon: continue # wrong daemon
                 match = regex.match(rec['message'])
                 if not match: continue # wrong log message
                 result.update(match.groupdict())
