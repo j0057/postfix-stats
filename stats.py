@@ -107,16 +107,17 @@ class Matcher(object):
         result = { 'type': self.name }
         for rec in records:
             for (next_state, sid, regex) in self.trans[state]:
-                if rec['sid'] != sid: continue
+                if rec['sid'] != sid: continue # wrong daemon
                 match = regex.match(rec['message'])
-                if not match: continue
+                if not match: continue # wrong log message
                 result.update(match.groupdict())
                 state = next_state
-                break
+                break # found it, so stop searching
             else:
-                break
+                break # didn't find it, so give up
         else:
-            if state == 42: return result
+            if state == 42: return result # reached end of state machine, so return result
+        return None
 
 _session_rules = [
     Matcher('LOCAL_TO_LOCAL_DELIVERED',
