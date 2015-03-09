@@ -6,6 +6,7 @@ from pprint import pprint
 import sys
 from contextlib import contextmanager
 import time
+import itertools
 
 _log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<sid>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
 _message_id = re.compile(r'^[0-9A-F]{10}')
@@ -97,37 +98,40 @@ def print_record(rec):
     print '{i:4} {date} {hostname} {sid}[{pid}]: {message}'.format(i=rec['session_id'] or '', **rec)
 
 class Matcher(object):
-    def __init__(self, name, *pattern):
+    def __init__(self, name, *transitions):
         self.name = name
-        self.sid = [ sid for (sid, _) in pattern ]
-        self.rgx = [ re.compile(regex or r'^.*$') for (_, regex) in pattern ]
+        self.trans = { k: [ (next_state, sid, re.compile(regex or r'^.*$')) for (_, next_state, sid, regex) in v ]
+                       for (k, v) in itertools.groupby(transitions, lambda t: t[0]) }
 
-    def __call__(self, records, i=0):
+    def __call__(self, records, state=0):
         result = { 'type': self.name }
         for rec in records:
-            if i >= len(self.sid): break
-            if rec['sid'] != self.sid[i]: break
-            match = self.rgx[i].match(rec['message'])
-            if not match: break
-            result.update(match.groupdict())
-            i += 1
+            for (next_state, sid, regex) in self.trans[state]:
+                if rec['sid'] != sid: continue
+                match = regex.match(rec['message'])
+                if not match: continue
+                result.update(match.groupdict())
+                state = next_state
+                break
+            else:
+                break
         else:
-            if i == len(self.sid): return result
+            if state == 42: return result
 
 _session_rules = [
     Matcher('LOCAL_TO_LOCAL_DELIVERED',
-            ('postfix/pickup', r''),
-            ('postfix/cleanup', r''),
-            ('postfix/qmgr', r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            ('postfix/local', r''),
-            ('postfix/qmgr', r'^[0-9A-F]{10}: removed$')),
+            (0, 1,  'postfix/pickup',   r''),
+            (1, 2,  'postfix/cleanup',  r''),
+            (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            (3, 4,  'postfix/local',    r''),
+            (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
     Matcher('LOCAL_TO_REMOTE_DELIVERED',
-            ('postfix/pickup', r''),
-            ('postfix/cleanup', r''),
-            ('postfix/qmgr', r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            ('postfix/smtp', r''),
-            ('postfix/qmgr', r'^[0-9A-F]{10}: removed$')),
+            (0, 1,  'postfix/pickup',   r''),
+            (1, 2,  'postfix/cleanup',  r''),
+            (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            (3, 4,  'postfix/smtp',     r''),
+            (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 ]
 
 def classify_sessions(records):
