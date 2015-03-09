@@ -119,32 +119,48 @@ class Matcher(object):
             if state == 42: return result # reached end of state machine, so return result
         return None
 
+class RemoteNoQueue(Matcher):
+    def __init__(self, name, error_msg):
+        regex = r'^NOQUEUE: reject: RCPT from \S+\[\S+\]: (?P<smtp_basic_status>\d{{3}}) (?P<smtp_status>\d\.\d\.\d)(?: <(?P<error_arg>.*)>:)? {error_msg}; from=<(?P<from>\S*)> to=<(?P<to>\S*)> proto=\w+ helo=<(?P<helo>\S*)>$'.format(error_msg=error_msg)
+        super(type(self), self).__init__(name,
+            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+            (1, 2,  'postfix/smtpd',    regex),
+            (2, 2,  'postfix/smtpd',    regex),
+            (2, 2,  'postfix/smtpd',    r'^lost connection after .+$'),
+            (2, 2,  'postfix/smtpd',    r'^timeout after .+$'),
+            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
+
 _session_rules = [
     Matcher('LOCAL_TO_LOCAL_DELIVERED',
             (0, 1,  'postfix/pickup',   r''),
             (1, 2,  'postfix/cleanup',  r''),
             (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (3, 4,  'postfix/local',    r''),
+            (3, 4,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
             (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
     Matcher('LOCAL_TO_REMOTE_DELIVERED',
             (0, 1,  'postfix/pickup',   r''),
             (1, 2,  'postfix/cleanup',  r''),
             (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (3, 4,  'postfix/smtp',     r''),
+            (3, 4,  'postfix/smtp',     r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
             (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
-    Matcher('REMOTE_TO_LOCAL_GREYLISTED',
-            (0, 1,  'postfix/smtpd',    r'^connect from .+$'),
-            (1, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Greylisted;.*$'),
-            (2, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Greylisted;.*$'),
-            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
+    RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: "Greylisted'),
+    RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
+    RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
+    RemoteNoQueue('NOQUEUE_SENDER_DOMAIN_NOT_FOUND', 'Sender address rejected: Domain not found'),
+    RemoteNoQueue('NOQUEUE_CLIENT_HOST_BLOCKED', r'Service unavailable; Client host \[\S+\] blocked using sbl-xbl.spamhaus.org; http://www.spamhaus.org/query/bl\?ip=\S+'),
+    RemoteNoQueue('NOQUEUE_RELAY_ACCESS_DENIED', 'Relay access denied'),
+    RemoteNoQueue('NOQUEUE_SPF_FAIL', r'Recipient address rejected: Message rejected due to: SPF fail - not authorized. Please see .+'),
+    # NOQUEUE: reject: VRFY from 186-211-100-147.gegnet.com.br[186.211.100.147]: 504 5.5.2 <root>: Recipient address rejected: need fully-qualified address; to=<root> proto=SMTP
 
-    Matcher('REMOTE_TO_LOCAL_HELO_REJECTED',
-            (0, 1,  'postfix/smtpd',    r'^connect from .+$'),
-            (1, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Helo command rejected:.*$'),
-            (2, 2,  'postfix/smtpd',    r'^lost connection after .*$'),
-            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
+    Matcher('BRUTE_FORCE',
+            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+            (1, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (PLAIN|LOGIN) authentication failed:.*$'),
+            (2, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (PLAIN|LOGIN) authentication failed:.*$'),
+            (2, 3,  'postfix/smtpd',    r'^lost connection .+$'),
+            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'),
+            (3, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
 ]
 
 def classify_sessions(records):
@@ -154,6 +170,18 @@ def classify_sessions(records):
             if result: return result
     return { session_id: classify(session)
              for (session_id, session) in session_dict(records).items() }
+
+formatters = {
+    'LOCAL_TO_LOCAL_DELIVERED': lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
+    'LOCAL_TO_REMOTE_DELIVERED': lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
+    'NOQUEUE_GREYLISTED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_HELO_HOST_NOT_FOUND': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_HELO_HOST_NOT_FQDN': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_SENDER_DOMAIN_NOT_FOUND': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_CLIENT_HOST_BLOCKED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_RELAY_ACCESS_DENIED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_SPF_FAIL': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+}
 
 if __name__ == '__main__':
     records = get_records()
@@ -180,8 +208,10 @@ if __name__ == '__main__':
 
     index = session_index(records)
     for session_id in sorted(index.keys()):
-        for i in index[session_id]:
-            print_record(records[i])
-        if patterns[session_id]:
-            print ' -->', patterns[session_id]
-        print
+        if not patterns[session_id]:
+            for i in index[session_id]:
+                print_record(records[i])
+            print
+        #if patterns[session_id]:
+        #    print ' -->', formatters.get(patterns[session_id]['type'], repr)(patterns[session_id])
+        #print
