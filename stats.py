@@ -4,17 +4,30 @@ import re
 import subprocess
 from pprint import pprint
 import sys
+from contextlib import contextmanager
+import time
 
 _log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<sid>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
 _message_id = re.compile(r'^[0-9A-F]{10}')
 
+@contextmanager
+def timer(message):
+    sys.stderr.write(message)
+    sys.stderr.write(' ')
+    sys.stderr.flush()
+    t1 = time.time()
+    yield
+    t2 = time.time()
+    sys.stderr.write('{0} ms\n'.format(int((t2 - t1) * 1000)))
+    sys.stderr.flush()
+
 def get_records():
-    sys.stderr.write('running journalctl\n')
-    logs = subprocess.check_output(['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso', '--since=2015-02-01'])
-    sys.stderr.write('splitting lines\n')
-    logs = logs.split('\n')[1:-1]
-    sys.stderr.write('parsing records\n')
-    return [ _log_parts.match(line).groupdict() for line in logs ]
+    with timer('running journalctl...'):
+        logs = subprocess.check_output(['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso', '--since=2015-02-01'])
+    with timer('splitting lines...'):
+        logs = logs.split('\n')[1:-1]
+    with timer('parsing records...'):
+        return [ _log_parts.match(line).groupdict() for line in logs ]
 
 def find_connects_and_pickups(records):
     session_id = 1
@@ -128,17 +141,17 @@ def classify_sessions(records):
 if __name__ == '__main__':
     records = get_records()
 
-    sys.stderr.write('finding connects and pickups\n')
-    find_connects_and_pickups(records)
+    with timer('finding connects and pickups...'):
+        find_connects_and_pickups(records)
 
-    sys.stderr.write('finding disconnects\n')
-    find_disconnects(records)
+    with timer('finding disconnects...'):
+        find_disconnects(records)
 
-    sys.stderr.write('following queues\n')
-    follow_queue(records)
+    with timer('following queues...'):
+        follow_queue(records)
 
-    sys.stderr.write('matching patterns\n')
-    patterns = classify_sessions(records)
+    with timer('matching patterns...'):
+        patterns = classify_sessions(records)
 
     sys.stderr.write('done\n\n')
 
