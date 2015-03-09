@@ -132,6 +132,18 @@ _session_rules = [
             (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
             (3, 4,  'postfix/smtp',     r''),
             (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
+
+    Matcher('REMOTE_TO_LOCAL_GREYLISTED',
+            (0, 1,  'postfix/smtpd',    r'^connect from .+$'),
+            (1, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Greylisted;.*$'),
+            (2, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Greylisted;.*$'),
+            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
+
+    Matcher('REMOTE_TO_LOCAL_HELO_REJECTED',
+            (0, 1,  'postfix/smtpd',    r'^connect from .+$'),
+            (1, 2,  'postfix/smtpd',    r'^NOQUEUE: reject.*Helo command rejected:.*$'),
+            (2, 2,  'postfix/smtpd',    r'^lost connection after .*$'),
+            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
 ]
 
 def classify_sessions(records):
