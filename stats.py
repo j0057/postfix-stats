@@ -147,6 +147,17 @@ _session_rules = [
             (3, 4,  'postfix/smtp',     r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
             (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
+    Matcher('REMOTE_TO_LOCAL_DELIVERED',
+            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+            (1, 2,  'postfix/smtpd',    r'^[0-9A-F]{10}: client=\S+\[\S+\]$'),
+            (2, 3,  'postfix/cleanup',  r'^[0-9A-F]{10}: message-id=<\S*>$'),
+            (3, 3,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
+            (3, 4,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S*)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            (4, 4,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
+            (4, 5,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?, relay=local,.*$'),
+            (5, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$'),
+            (42,42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$')),
+
     RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: "Greylisted'),
     RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
     RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
