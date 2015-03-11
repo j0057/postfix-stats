@@ -175,6 +175,11 @@ _session_rules = [
             (2, 3,  'postfix/smtpd',    r'^timeout after .+$'),
             (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'),
             (3, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
+
+    Matcher('PROBE',
+            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+            (1, 1,  'postfix/smtpd',    r'^lost connection after .+$'),
+            (1, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'))
 ]
 
 def classify_sessions(records):
