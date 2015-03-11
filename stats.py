@@ -169,11 +169,12 @@ _session_rules = [
 
     Matcher('BRUTE_FORCE',
             (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
-            (1, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (PLAIN|LOGIN) authentication failed:.*$'),
-            (2, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (PLAIN|LOGIN) authentication failed:.*$'),
-            (2, 3,  'postfix/smtpd',    r'^lost connection .+$'),
+            (1, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
+            (2, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
+            (2, 3,  'postfix/smtpd',    r'^lost connection after .+$'),
+            (2, 3,  'postfix/smtpd',    r'^timeout after .+$'),
             (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'),
-            (3, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
+            (3, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
 ]
 
 def classify_sessions(records):
