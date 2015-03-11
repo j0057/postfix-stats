@@ -136,6 +136,7 @@ _session_rules = [
             (0, 1,  'postfix/pickup',   r''),
             (1, 2,  'postfix/cleanup',  r''),
             (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+            (3, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
             (3, 4,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
             (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
