@@ -191,15 +191,18 @@ def classify_sessions(records):
              for (session_id, session) in session_dict(records).items() }
 
 formatters = {
-    'LOCAL_TO_LOCAL_DELIVERED': lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
-    'LOCAL_TO_REMOTE_DELIVERED': lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
-    'NOQUEUE_GREYLISTED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_HELO_HOST_NOT_FOUND': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_HELO_HOST_NOT_FQDN': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_SENDER_DOMAIN_NOT_FOUND': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_CLIENT_HOST_BLOCKED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_RELAY_ACCESS_DENIED': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
-    'NOQUEUE_SPF_FAIL': lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'LOCAL_TO_LOCAL_DELIVERED'          : lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
+    'LOCAL_TO_REMOTE_DELIVERED'         : lambda props: '{type}: <{from}> -> <{collapsed_to}>'.format(collapsed_to=props['orig_to'] or props['to'], **props),
+    'REMOTE_TO_LOCAL_DELIVERED'         : lambda props: '{type}: <{from}> -> <{collapsed_to}> {client_name}[{client_ip}]'.format(collapsed_to=props['orig_to'] or props['to'], **props),
+    'NOQUEUE_GREYLISTED'                : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_HELO_HOST_NOT_FOUND'       : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_HELO_HOST_NOT_FQDN'        : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_SENDER_DOMAIN_NOT_FOUND'   : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_CLIENT_HOST_BLOCKED'       : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_RELAY_ACCESS_DENIED'       : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'NOQUEUE_SPF_FAIL'                  : lambda props: '{type}: <{from}> -> <{to}> {client_name}[{client_ip}] helo=<{helo}>'.format(**props),
+    'BRUTE_FORCE'                       : lambda props: '{type}: {client_name}[{client_ip}]'.format(**props),
+    'PROBE'                             : lambda props: '{type}: {client_name}[{client_ip}]'.format(**props)
 }
 
 if __name__ == '__main__':
