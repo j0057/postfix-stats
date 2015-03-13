@@ -7,24 +7,33 @@ import sys
 from contextlib import contextmanager
 import time
 import itertools
+import argparse
 
 _log_parts = re.compile(r'^(?P<date>\S+) (?P<hostname>\w+) (?P<daemon>\S+)\[(?P<pid>\d+)\]: (?P<message>.*)$')
 _message_id = re.compile(r'^[0-9A-F]{10}')
 
-@contextmanager
-def timer(message):
-    sys.stderr.write(message)
-    sys.stderr.write(' ')
-    sys.stderr.flush()
-    t1 = time.time()
-    yield
-    t2 = time.time()
-    sys.stderr.write('{0} ms\n'.format(int((t2 - t1) * 1000)))
-    sys.stderr.flush()
+def create_timer_function(chatty):
+    @contextmanager
+    def _timer(message):
+        if chatty:
+            sys.stderr.write(message)
+            sys.stderr.write(' ')
+            sys.stderr.flush()
+            t1 = time.time()
+        yield
+        if chatty:
+            t2 = time.time()
+            sys.stderr.write('{0} ms\n'.format(int((t2 - t1) * 1000)))
+            sys.stderr.flush()
+    global timer
+    timer = _timer
 
-def get_records():
+def get_records(since, until):
     with timer('running journalctl...'):
-        logs = subprocess.check_output(['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso', '--since=2015-02-01'])
+        command = ['/usr/bin/journalctl', '--unit=postfix.service', '--output=short-iso']
+        if since: command += [ '--since=' + since ]
+        if until: command += [ '--until=' + until ]
+        logs = subprocess.check_output(command)
     with timer('splitting lines...'):
         logs = logs.split('\n')[1:-1]
     with timer('parsing records...'):
@@ -131,62 +140,66 @@ class RemoteNoQueue(Matcher):
             (2, 2,  'postfix/smtpd',    r'^timeout after .+$'),
             (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'))
 
-_session_rules = [
-    Matcher('LOCAL_TO_LOCAL_DELIVERED',
-            (0, 1,  'postfix/pickup',   r''),
-            (1, 2,  'postfix/cleanup',  r''),
-            (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (3, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (3, 4,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
-            (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
+def create_session_rules():
+    return [
+        Matcher('LOCAL_TO_LOCAL_DELIVERED',
+                (0, 1,  'postfix/pickup',   r''),
+                (1, 2,  'postfix/cleanup',  r''),
+                (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+                (3, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+                (3, 4,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
+                (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
-    Matcher('LOCAL_TO_REMOTE_DELIVERED',
-            (0, 1,  'postfix/pickup',   r''),
-            (1, 2,  'postfix/cleanup',  r''),
-            (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (3, 4,  'postfix/smtp',     r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
-            (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
+        Matcher('LOCAL_TO_REMOTE_DELIVERED',
+                (0, 1,  'postfix/pickup',   r''),
+                (1, 2,  'postfix/cleanup',  r''),
+                (2, 3,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S+)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+                (3, 4,  'postfix/smtp',     r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?.*$'),
+                (4, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$')),
 
-    Matcher('REMOTE_TO_LOCAL_DELIVERED',
-            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
-            (1, 2,  'postfix/smtpd',    r'^[0-9A-F]{10}: client=\S+\[\S+\]$'),
-            (2, 3,  'postfix/cleanup',  r'^[0-9A-F]{10}: message-id=<\S*>$'),
-            (3, 3,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
-            (3, 4,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S*)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
-            (4, 4,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
-            (4, 5,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?, relay=local,.*$'),
-            (5, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$'),
-            (42,42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$')),
+        Matcher('REMOTE_TO_LOCAL_DELIVERED',
+                (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+                (1, 2,  'postfix/smtpd',    r'^[0-9A-F]{10}: client=\S+\[\S+\]$'),
+                (2, 3,  'postfix/cleanup',  r'^[0-9A-F]{10}: message-id=<\S*>$'),
+                (3, 3,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
+                (3, 4,  'postfix/qmgr',     r'^[0-9A-F]{10}: from=<(?P<from>\S*)>, size=\d+, nrcpt=\d+ \(queue active\)$'),
+                (4, 4,  'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'),
+                (4, 5,  'postfix/local',    r'^[0-9A-F]{10}: to=<(?P<to>\S+)>(?:, orig_to=<(?P<orig_to>\S+)>)?, relay=local,.*$'),
+                (5, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$'),
+                (42,42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$')),
 
-    RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: "Greylisted'),
-    RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
-    RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
-    RemoteNoQueue('NOQUEUE_SENDER_DOMAIN_NOT_FOUND', 'Sender address rejected: Domain not found'),
-    RemoteNoQueue('NOQUEUE_CLIENT_HOST_BLOCKED', r'Service unavailable; Client host \[\S+\] blocked using sbl-xbl.spamhaus.org; http://www.spamhaus.org/query/bl\?ip=\S+'),
-    RemoteNoQueue('NOQUEUE_RELAY_ACCESS_DENIED', 'Relay access denied'),
-    RemoteNoQueue('NOQUEUE_SPF_FAIL', r'Recipient address rejected: Message rejected due to: SPF fail - not authorized. Please see .+'),
-    # NOQUEUE: reject: VRFY from 186-211-100-147.gegnet.com.br[186.211.100.147]: 504 5.5.2 <root>: Recipient address rejected: need fully-qualified address; to=<root> proto=SMTP
+        RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: "Greylisted'),
+        RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
+        RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
+        RemoteNoQueue('NOQUEUE_SENDER_DOMAIN_NOT_FOUND', 'Sender address rejected: Domain not found'),
+        RemoteNoQueue('NOQUEUE_CLIENT_HOST_BLOCKED', r'Service unavailable; Client host \[\S+\] blocked using sbl-xbl.spamhaus.org; http://www.spamhaus.org/query/bl\?ip=\S+'),
+        RemoteNoQueue('NOQUEUE_RELAY_ACCESS_DENIED', 'Relay access denied'),
+        RemoteNoQueue('NOQUEUE_SPF_FAIL', r'Recipient address rejected: Message rejected due to: SPF fail - not authorized. Please see .+'),
+        # NOQUEUE: reject: VRFY from 186-211-100-147.gegnet.com.br[186.211.100.147]: 504 5.5.2 <root>: Recipient address rejected: need fully-qualified address; to=<root> proto=SMTP
 
-    Matcher('BRUTE_FORCE',
-            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
-            (1, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
-            (2, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
-            (2, 3,  'postfix/smtpd',    r'^lost connection after .+$'),
-            (2, 3,  'postfix/smtpd',    r'^timeout after .+$'),
-            (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'),
-            (3, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
+        Matcher('BRUTE_FORCE',
+                (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+                (1, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
+                (2, 2,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL (?:PLAIN|LOGIN|login) authentication failed:.*$'),
+                (2, 3,  'postfix/smtpd',    r'^lost connection after .+$'),
+                (2, 3,  'postfix/smtpd',    r'^timeout after .+$'),
+                (2, 42, 'postfix/smtpd',    r'^disconnect from .+$'),
+                (3, 42, 'postfix/smtpd',    r'^disconnect from .+$')),
 
-    Matcher('PROBE',
-            (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
-            (1, 1,  'postfix/smtpd',    r'^lost connection after .+$'),
-            (1, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'))
-]
+        Matcher('PROBE',
+                (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+                (1, 1,  'postfix/smtpd',    r'^lost connection after .+$'),
+                (1, 1,  'postfix/smtpd',    r'^timeout after .+$'),
+                (1, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'))
+    ]
 
-def classify_sessions(records):
+def classify_sessions(records, session_rules):
     def classify(session):
-        for matcher in _session_rules:
+        for matcher in session_rules:
             result = matcher(session)
-            if result: return result
+            if result:
+                return result
+        return {'type': 'UNKNOWN'}
     return { session_id: classify(session)
              for (session_id, session) in session_dict(records).items() }
 
@@ -205,8 +218,25 @@ formatters = {
     'PROBE'                             : lambda props: '{type}: {client_name}[{client_ip}]'.format(**props)
 }
 
-if __name__ == '__main__':
-    records = get_records()
+def parse_args(args):
+    parser = argparse.ArgumentParser(prog='postfix-stats', description='parsers postfix log messages')
+    parser.add_argument('--since', '-s', dest='since', action='store', required=True, help='since when should logs be analyzed')
+    parser.add_argument('--until', '-u', dest='until', action='store', required=False, help='until when should logs be analyzed')
+    parser.add_argument('--verbose', '-v', dest='verbose', action='count', required=False, help='verbosity (specify up to three times)')
+
+    filters = parser.add_mutually_exclusive_group()
+    filters.add_argument('--include', '-i', dest='include', action='store', required=False, type=lambda s: s.split(','), help='include only comma separated classes')
+    filters.add_argument('--exclude', '-e', dest='exclude', action='store', required=False, type=lambda s: s.split(','), help='exclude comma separated classes')
+
+    return parser.parse_args(args)
+
+def main(args):
+    create_timer_function(chatty=args.verbose >= 2)
+
+    with timer('compiling regexes...'):
+        session_rules = create_session_rules()
+
+    records = get_records(args.since, args.until)
 
     with timer('finding connects and pickups...'):
         find_connects_and_pickups(records)
@@ -218,22 +248,31 @@ if __name__ == '__main__':
         follow_queue(records)
 
     with timer('matching patterns...'):
-        patterns = classify_sessions(records)
+        patterns = classify_sessions(records, session_rules)
 
-    sys.stderr.write('done\n\n')
+    if args.verbose >= 2:
+        sys.stderr.write('done\n\n')
 
     # TODO : policyd-spf
     # TODO : anvil statistics
     # TODO : warning hostname does not resolve to address
 
-    #map(print_record, records)
-
     index = session_index(records)
     for session_id in sorted(index.keys()):
-        if not patterns[session_id]:
+        if args.include and patterns[session_id]['type'] not in args.include:
+            continue
+        if args.exclude and patterns[session_id]['type'] in args.exclude:
+            continue
+        if args.verbose >= 1:
             for i in index[session_id]:
                 print_record(records[i])
+        print '{0:4}'.format(session_id), ':', formatters.get(patterns[session_id]['type'], repr)(patterns[session_id])
+        if args.verbose >= 1:
             print
-        #if patterns[session_id]:
-        #    print ' -->', formatters.get(patterns[session_id]['type'], repr)(patterns[session_id])
-        #print
+
+if __name__ == '__main__':
+    args = parse_args(sys.argv[1:])
+    if args.verbose >= 3:
+        sys.stderr.write(repr(args))
+        sys.stderr.write('\n')
+    main(args)
