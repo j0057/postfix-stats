@@ -196,7 +196,15 @@ def create_session_rules():
                 (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
                 (1, 1,  'postfix/smtpd',    r'^lost connection after .+$'),
                 (1, 1,  'postfix/smtpd',    r'^timeout after .+$'),
-                (1, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'))
+                (1, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$')),
+
+        Matcher('PROBE_SSL',
+                (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
+                (1, 2,  'postfix/smtpd',    r'^SSL_accept error from .*$'),
+                (2, 2,  'postfix/smtpd',    r'^warning: TLS library problem: .*$'),
+                (2, 2,  'postfix/smtpd',    r'^lost connection after .+$'),
+                (2, 2,  'postfix/smtpd',    r'^timeout after .+$'),
+                (2, 42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$'))
     ]
 
 def classify_sessions(records, session_rules):
