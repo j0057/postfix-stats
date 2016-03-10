@@ -37,7 +37,12 @@ def get_records(since, until):
     with timer('splitting lines...'):
         logs = logs.split('\n')[1:-1]
     with timer('parsing records...'):
-        return [ _log_parts.match(line).groupdict() for line in logs ]
+        for line in logs:
+            match = _log_parts.match(line)
+            if not match:
+                sys.stderr.write('!! {0!r}\n'.format(line))
+                continue
+            yield match.groupdict()
 
 def find_connects_and_pickups(records):
     session_id = 1
@@ -236,7 +241,7 @@ def main(args):
     with timer('compiling regexes...'):
         session_rules = create_session_rules()
 
-    records = get_records(args.since, args.until)
+    records = list(get_records(args.since, args.until))
 
     with timer('finding connects and pickups...'):
         find_connects_and_pickups(records)
