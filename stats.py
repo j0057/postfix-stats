@@ -177,7 +177,7 @@ def create_session_rules():
         RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
         RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
         RemoteNoQueue('NOQUEUE_SENDER_DOMAIN_NOT_FOUND', 'Sender address rejected: Domain not found'),
-        RemoteNoQueue('NOQUEUE_CLIENT_HOST_BLOCKED', r'Service unavailable; Client host \[\S+\] blocked using sbl-xbl.spamhaus.org; http://www.spamhaus.org/query/bl\?ip=\S+'),
+        RemoteNoQueue('NOQUEUE_CLIENT_HOST_BLOCKED', r'Service unavailable; Client host \[\S+\] blocked using (?P<blocklist>\S+); https?://\S+'),
         RemoteNoQueue('NOQUEUE_RELAY_ACCESS_DENIED', 'Relay access denied'),
         RemoteNoQueue('NOQUEUE_SPF_FAIL', r'Recipient address rejected: Message rejected due to: SPF fail - not authorized. Please see .+'),
         # NOQUEUE: reject: VRFY from 186-211-100-147.gegnet.com.br[186.211.100.147]: 504 5.5.2 <root>: Recipient address rejected: need fully-qualified address; to=<root> proto=SMTP
