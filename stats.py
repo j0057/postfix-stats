@@ -136,7 +136,7 @@ class Matcher(object):
 class RemoteNoQueue(Matcher):
     def __init__(self, name, error_msg):
         regex = r'^NOQUEUE: reject: RCPT from \S+\[\S+\]: (?P<smtp_basic_status>\d{{3}}) (?P<smtp_status>\d\.\d\.\d)(?: <(?P<error_arg>.*)>:)? {error_msg}; from=<(?P<from>\S*)> to=<(?P<to>\S*)> proto=\w+ helo=<(?P<helo>\S*)>$'.format(error_msg=error_msg)
-        super(type(self), self).__init__(name,
+        super(RemoteNoQueue, self).__init__(name,
             (0, 1,  'postfix/smtpd',    r'^connect from (?P<client_name>\S+)\[(?P<client_ip>\S+)\]$'),
             (1, 1,  'postfix/smtpd',    r'^warning: \S+\[\S+\]: SASL login authentication failed(?:: .+)$'),
             (1, 2,  'postfix/smtpd',    regex),
