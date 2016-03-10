@@ -173,7 +173,7 @@ def create_session_rules():
                 (5, 42, 'postfix/qmgr',     r'^[0-9A-F]{10}: removed$'),
                 (42,42, 'postfix/smtpd',    r'^disconnect from \S+\[\S+\].*$')),
 
-        RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: "Greylisted'),
+        RemoteNoQueue('NOQUEUE_GREYLISTED', 'Recipient address rejected: Greylisted .*'),
         RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FOUND', 'Helo command rejected: Host not found'),
         RemoteNoQueue('NOQUEUE_HELO_HOST_NOT_FQDN', 'Helo command rejected: need fully-qualified hostname'),
         RemoteNoQueue('NOQUEUE_SENDER_DOMAIN_NOT_FOUND', 'Sender address rejected: Domain not found'),
