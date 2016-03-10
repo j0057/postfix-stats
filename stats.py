@@ -262,6 +262,9 @@ def main(args):
     # TODO : anvil statistics
     # TODO : warning hostname does not resolve to address
 
+    if args.verbose >= 4:
+        map(print_record, records)
+
     index = session_index(records)
     for session_id in sorted(index.keys()):
         if args.include and patterns[session_id]['type'] not in args.include:
